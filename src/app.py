@@ -79,4 +79,4 @@ if prompt := st.chat_input("어떤 프로젝트를 만들고 싶나요?"):
         if final_state.get("messages"):
             response = final_state["messages"][-1].content
             st.markdown(response)
-            st.session_state.messages.append(AiMessage(content=response))
+            st.session_state.messages.append(AIMessage(content=response))

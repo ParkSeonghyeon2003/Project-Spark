@@ -8,6 +8,10 @@ def should_continue(state: AgentState):
         return "end"
     return "re-design"
 
+def check_requirements(state: AgentState):
+    if state.get("requirements").get("is_info_sufficient"):
+        
+
 def init_graph():
     workflow = StateGraph(AgentState)
 
