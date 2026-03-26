@@ -1,82 +1,94 @@
 import streamlit as st
-from langchain_core.messages import HumanMessage, AIMessage
-from service import load_graph
-
-from dotenv import load_dotenv
 import uuid
-import os
+from langchain_core.messages import HumanMessage
+from service import load_graph, create_project_zip, run_agent_workflow
+from config import settings
 
-# 파이썬의 표준 라이브러리(예: urllib, ssl)가 참조할 인증서 파일 경로를 설정합니다.
-# 'r'은 Raw String으로, 역슬래시(\)를 경로 기호로 그대로 인식하게 합니다.
-os.environ["SSL_CERT_FILE"] = r"C:\cert\cacert.pem"
-
-# curl 기반의 라이브러리나 일부 하위 시스템이 참조할 인증서 묶음(Bundle) 경로를 설정합니다.
-# 보안 네트워크(방화벽) 환경에서 인증서 오류를 해결하기 위해 자주 사용됩니다.
-os.environ["CURL_CA_BUNDLE"] = r"C:\cert\cacert.pem"
-
-load_dotenv()
-
-st.set_page_config(page_title="Blueprint AI", layout="wide")
-st.title("🚀 Blueprint AI: 프로젝트 스파크")
-
-# 세션 상태 초기화 (메모리 유지용)
-if "messages" not in st.session_state:
-    st.session_state["messages"] = []
-if "thread_id" not in st.session_state:
-    st.session_state["thread_id"] = str(uuid.uuid4())
-
-# 사이드바 - 현재 프로젝트 상태 미리보기
-with st.sidebar:
-    st.header("📋 Project Blueprint")
-    # 그래프 내부의 최신 State를 가져와서 보여줄 영역
-    # (일단은 비워두고 채팅부터 연결하자)
-    st.info("에이전트가 분석을 완료하면 여기에 설계도가 나타납니다.")
-
-    st.write("현재 thread_id")
-    st.code(st.session_state["thread_id"])
-
-    if st.button("대화 초기화"):
-        st.session_state["thread_id"] = str(uuid.uuid4())
+def init_session():
+    if "messages" not in st.session_state:
         st.session_state["messages"] = []
-        st.rerun()
+    if "thread_id" not in st.session_state:
+        st.session_state["thread_id"] = str(uuid.uuid4())
+    if "final_state" not in st.session_state:
+        st.session_state["final_state"] = None
+
+def render_sidebar():
+    with st.sidebar:
+        st.header("📋 Project Blueprint")
+        st.info("에이전트가 분석을 완료하면 여기에 설계도가 나타납니다.")
+        st.write("현재 세션")
+        st.code(st.session_state["thread_id"])
+
+        if st.button("대화 초기화", use_container_width=True):
+            st.session_state["thread_id"] = str(uuid.uuid4())
+            st.session_state["messages"] = []
+            st.rerun()
+
+def render_chat_interface(graph):
+    for msg in st.session_state["messages"]:
+        with st.chat_message(msg.type):
+            st.markdown(msg.content)
+
+    if prompt := st.chat_input("어떤 프로젝트를 만들고 싶나요?"):
+        # 사용자 입력단
+        user_msg = HumanMessage(content=prompt)
+        st.session_state.messages.append(user_msg)
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
 
-# 그래프 로드 (캐싱 적용됨)
-graph = load_graph()
+        config = {"configurable": {"thread_id": st.session_state["thread_id"]}}
 
-# 채팅 인터페이스
-for msg in st.session_state["messages"]:
-    with st.chat_message(msg.type):
-        st.markdown(msg.content)
+        agent_names = {
+            "pm_agent": "📋 요구사항 분석",
+            "architect_agent": "🏗️ 기술 스택 설계",
+            "developer_agent": "🛠️ 코드 생성",
+            "coordinator_agent": "✅ 최종 검토"
+        }
 
-if prompt := st.chat_input("어떤 프로젝트를 만들고 싶나요?"):
-    # 유저 입력 출력
-    st.session_state.messages.append(HumanMessage(content=prompt))
-    with st.chat_message("user"):
-        st.markdown(prompt)
+        with st.chat_message("assistant"):
+            with st.status("에이전트 팀이 협업 중입니다...", expanded=True) as status:
+                for agent_msg in run_agent_workflow(graph, st.session_state.messages, config):
+                    display_name = agent_names.get(agent_msg.name, agent_msg.name)
+                    with st.status(f"🔔 **{display_name}** 완료", expanded=False):
+                        st.markdown(agent_msg.content)
+                    st.session_state.messages.append(agent_msg)
+                final_state = graph.get_state(config).values
+                st.session_state["final_state"] = final_state
+                status.update(label="✨ 모든 설계가 완료되었습니다!", state="complete", expanded=False)
 
-    # LangGraph 실행
-    config = {"configurable": {"thread_id": st.session_state["thread_id"]}}
-    
-    with st.chat_message("assistant"):
-        with st.status("에이전트 팀이 협업 중입니다...", expanded=True) as status:
-            # 스트리밍 모드로 실행하여 노드 변화 감지
-            for event in graph.stream(
-                {"messages": st.session_state.messages}, 
-                config, 
-                stream_mode="values"
-            ):
-                if "messages" in event:
-                    # 마지막 메시지가 에이전트의 응답이면 상태 업데이트
-                    last_msg = event["messages"][-1]
-                    if isinstance(last_msg, AIMessage):
-                        st.write(f"🔔 **{last_msg.name if hasattr(last_msg, 'name') else 'Agent'}** 작업 완료")
-            
-            status.update(label="설계 완료!", state="complete", expanded=False)
+            if st.session_state.messages:
+                st.markdown(st.session_state.messages[-1].content)
 
-        # 최종 응답 출력
-        final_state = graph.get_state(config).values
-        if final_state.get("messages"):
-            response = final_state["messages"][-1].content
-            st.markdown(response)
-            st.session_state.messages.append(AIMessage(content=response))
+    if st.session_state.final_state:
+        render_download_section(st.session_state.final_state)
+
+def render_download_section(state):
+    if state.get("file_structure"):
+        zip_data = create_project_zip(state["file_structure"].file_structure)
+        project_name = getattr(state["requirements"], 'project_name', 'project')
+
+        st.download_button(
+            label="🎁 프로젝트 다운로드 (.zip)",
+            data=zip_data,
+            file_name=f"{project_name}.zip",
+            mime="application/zip",
+            use_container_width=True
+        )
+
+
+def main():
+    st.set_page_config(page_title="Blueprint AI", layout="wide")
+    st.title("🚀 Blueprint AI: 프로젝트 스파크")
+
+    # SSL 설정
+    settings.setup_ssl()
+
+    init_session()
+    graph = load_graph()
+    render_sidebar()
+    render_chat_interface(graph)
+
+
+if __name__ == "__main__":
+    main()

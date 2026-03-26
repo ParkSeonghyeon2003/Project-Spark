@@ -1,33 +1,51 @@
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import RetryPolicy
+from schema import NodeName, Route
+from nodes import pm_node, architect_node, developer_node, coordinator_node
 from agent_state import AgentState
-from nodes import *
-from langgraph.graph import StateGraph, END
 from sql import connect_sqlite
 
-def should_continue(state: AgentState):
-    if state.get("is_approved"):
-        return "end"
-    return "re-design"
+def decide_finish(state: AgentState) -> Route:
+    if state.get("is_approved") is True:
+        return Route.END
+    return Route.RE_ARCHITECT
 
-def check_requirements(state: AgentState):
-    if state.get("requirements").get("is_info_sufficient"):
-        
+def check_requirements(state: AgentState) -> Route:
+    reqs = state.get("requirements")
+    if reqs and reqs.is_info_sufficient:
+        return Route.CONTINUE
+    return Route.ASK_MORE
 
 def init_graph():
+    standard_retry = RetryPolicy(max_attempts=3)
+
     workflow = StateGraph(AgentState)
 
-    workflow.add_node("analyze", analyze_node)
-    workflow.add_node("design", design_node)
-    workflow.add_node("generate", generate_node)
-    workflow.add_node("review", review_node)
+    workflow.add_node(NodeName.PM, pm_node, retry_policy=standard_retry)
+    workflow.add_node(NodeName.ARCHITECT, architect_node, retry_policy=standard_retry)
+    workflow.add_node(NodeName.DEVELOPER, developer_node, retry_policy=standard_retry)
+    workflow.add_node(NodeName.COORDINATOR, coordinator_node, retry_policy=standard_retry)
 
-    workflow.set_entry_point("analyze")
-    workflow.add_edge("analyze", "design")
-    workflow.add_edge("design", "generate")
-    workflow.add_edge("generate", "review")
-    workflow.add_conditional_edges("review", should_continue, {"end": END, "re-design": "design"})
+    workflow.add_edge(START, NodeName.PM)
 
-    checkpointer = connect_sqlite()
+    workflow.add_conditional_edges(
+        NodeName.PM,
+        check_requirements,
+        {
+            Route.CONTINUE: NodeName.ARCHITECT,
+            "ask_more": END
+        }
+    )
+    workflow.add_edge(NodeName.ARCHITECT, NodeName.DEVELOPER)
+    workflow.add_edge(NodeName.DEVELOPER, NodeName.COORDINATOR)
 
-    app = workflow.compile(checkpointer=checkpointer)
+    workflow.add_conditional_edges(
+        NodeName.COORDINATOR,
+        decide_finish,
+        {
+            Route.END: END,
+            Route.RE_ARCHITECT: NodeName.ARCHITECT
+        }
+    )
 
-    return app
+    return workflow.compile(checkpointer=connect_sqlite())
