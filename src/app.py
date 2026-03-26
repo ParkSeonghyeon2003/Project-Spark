@@ -52,7 +52,6 @@ def render_chat_interface(graph):
                     display_name = agent_names.get(agent_msg.name, agent_msg.name)
                     with st.status(f"🔔 **{display_name}** 완료", expanded=False):
                         st.markdown(agent_msg.content)
-                    st.session_state.messages.append(agent_msg)
                 final_state = graph.get_state(config).values
                 st.session_state["final_state"] = final_state
                 status.update(label="✨ 모든 설계가 완료되었습니다!", state="complete", expanded=False)
