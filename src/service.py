@@ -24,9 +24,6 @@ def run_agent_workflow(graph, input_messages, config):
             if isinstance(last_msg, AIMessage):
                 yield last_msg
 
-    final_state = graph.get_state(config).values
-    return final_state
-
 
 def create_project_zip(file_structure: list):
     buf = BytesIO()
