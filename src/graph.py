@@ -33,7 +33,7 @@ def init_graph():
         check_requirements,
         {
             Route.CONTINUE: NodeName.ARCHITECT,
-            "ask_more": END
+            Route.ASK_MORE: END
         }
     )
     workflow.add_edge(NodeName.ARCHITECT, NodeName.DEVELOPER)

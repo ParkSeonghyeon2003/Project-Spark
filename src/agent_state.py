@@ -9,3 +9,4 @@ class AgentState(TypedDict):
     tech_stack: Optional[ArchitectOutput]
     file_structure: Optional[DeveloperOutput]
     is_approved: bool
+    feedback: Optional[str]

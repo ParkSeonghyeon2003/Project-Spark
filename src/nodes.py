@@ -63,7 +63,8 @@ def architect_node(state: AgentState):
     result = chain.invoke({
         "project_name": reqs.project_name,
         "mvp_features": reqs.mvp_features,
-        "ext_features": reqs.ext_features
+        "ext_features": reqs.ext_features,
+        "feedback": state.get("feedback", "없음")
     })
 
     # 충족 체크
@@ -132,5 +133,6 @@ def coordinator_node(state: AgentState):
 
     return {
         "is_approved": result.is_approved,
+        "feedback": result.feedback,
         "messages": [AIMessage(content=content, name="coordinator_agent")]
     }

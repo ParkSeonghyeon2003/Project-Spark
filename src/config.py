@@ -8,7 +8,7 @@ class Settings():
     SSL_CERT_PATH = r"C:\cert\cacert.pem"
 
     # LLM
-    LLM_MODEL: str = "gpt-4o"
+    LLM_MODEL: str = "gpt-4.1"
     TEMPERATURE: float = 0.1
 
     # DB
